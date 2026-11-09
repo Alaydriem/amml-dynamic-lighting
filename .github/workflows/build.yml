@@ -1,0 +1,47 @@
+name: Build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+env:
+  MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}/dynamic-lighting
+
+defaults:
+  run:
+    working-directory: dynamic-lighting
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: dynamic-lighting
+
+      - uses: jdx/mise-action@v2
+        with:
+          working_directory: dynamic-lighting
+
+      - uses: taiki-e/install-action@nextest
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            dynamic-lighting/target
+          key: cargo-${{ hashFiles('dynamic-lighting/Cargo.lock', 'dynamic-lighting/rust-toolchain.toml') }}
+          restore-keys: |
+            cargo-
+
+      - run: mise run check
+      - run: mise run test
+      - run: mise run package
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: amml-dynamic-lighting-${{ github.sha }}-windows-x64
+          path: dynamic-lighting/dist/@amml/dynamic-lighting/

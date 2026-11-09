@@ -1,0 +1,23 @@
+[package]
+name = "dynamic-lighting-amml"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "amml_dynamic_lighting"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+amm-client.workspace = true
+amm-core.workspace = true
+amml-game.workspace = true
+amml-sdk.workspace = true
+curia.workspace = true
+serde.workspace = true
+
+[lints]
+workspace = true

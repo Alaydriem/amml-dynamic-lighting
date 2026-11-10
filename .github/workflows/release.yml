@@ -32,7 +32,7 @@ jobs:
       amml_ref: ${{ inputs.amml_ref }}
       modmanager_ref: ${{ inputs.modmanager_ref }}
       path: dynamic-lighting
-      namespace: amml
+      namespace: alaydriem
       name: dynamic-lighting
       package_task: package
       descriptor: src/amml/descriptor.hcl

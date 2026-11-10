@@ -2,7 +2,7 @@ namespace    = "alaydriem"
 name         = "dynamic-lighting"
 entry        = "alaydriem_dynamic_lighting.dll"
 api_version  = 2
-amml_version = "26.62.0"
+amml_version = "26.63.2"
 entries = [
   # required: the per-frame tick, the player, the held item
   "ClientInstance.update",
@@ -25,6 +25,8 @@ entries = [
   "RenderChunkCoordinator._setDirty",
   "RenderChunkCoordinator.vtable",
   "LevelRenderer.mRenderChunkCoordinators",
+  # optional: entity and block-entity light (recipe in ../amml/recipes/block_source.hcl)
+  "BlockSource.getLightColor",
   # Vibrant Visuals at Block Light Quality "off": skip the static light rewrite near the light
   "LightPropagationCoordinator.propagateForMesh",
   # optional: Vibrant Visuals hand emitter (the held block is lit with its own game colour)

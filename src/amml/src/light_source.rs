@@ -101,6 +101,15 @@ impl LightSource {
         LightFalloff::boost(light.level, round, light.steps(), pos).max(block)
     }
 
+    /// The new light pair (`[sky, block]`) for an entity light lookup at `pos`: the block byte raised as by `apply`
+    /// when the call is on the draw thread, otherwise `pair` unchanged. The sky byte never changes.
+    pub fn raise_pair(&self, pair: [u8; 2], pos: [i32; 3], on_draw_thread: bool) -> [u8; 2] {
+        if !on_draw_thread {
+            return pair;
+        }
+        [pair[0], self.apply(pos, pair[1])]
+    }
+
     /// True when the held light reaches a block of the subchunk at `subchunk` (subchunk coordinates). The Vibrant
     /// Visuals static light pass is skipped for these subchunks. Called on the mesh threads.
     pub fn reaches_subchunk(&self, subchunk: [i32; 3]) -> bool {
@@ -133,6 +142,37 @@ impl LightSource {
 mod tests {
     use super::LightSource;
     use crate::remesh_plan::HeldLight;
+
+    #[test]
+    fn raise_pair_off_draw_thread_is_unchanged() {
+        let source = LightSource::new();
+        source.publish(Some(HeldLight::centred([0, 0, 0], 14)), 0, false);
+        assert_eq!(source.raise_pair([15, 2], [0, 0, 0], false), [15, 2]);
+    }
+
+    #[test]
+    fn raise_pair_raises_block_in_reach_only() {
+        let source = LightSource::new();
+        assert_eq!(source.raise_pair([0, 2], [0, 0, 0], true), [0, 2]); // no light held
+        source.publish(Some(HeldLight::centred([0, 0, 0], 14)), 0, false);
+        assert_eq!(source.raise_pair([0, 2], [0, 0, 0], true), [0, 14]);
+        assert_eq!(source.raise_pair([0, 2], [0, 0, 3], true), [0, 11]);
+        assert_eq!(source.raise_pair([0, 2], [0, 0, 20], true), [0, 2]); // out of reach
+    }
+
+    #[test]
+    fn raise_pair_keeps_brighter_value() {
+        let source = LightSource::new();
+        source.publish(Some(HeldLight::centred([0, 0, 0], 14)), 0, false);
+        assert_eq!(source.raise_pair([0, 15], [0, 0, 3], true), [0, 15]);
+    }
+
+    #[test]
+    fn raise_pair_never_changes_sky() {
+        let source = LightSource::new();
+        source.publish(Some(HeldLight::centred([0, 0, 0], 14)), 0, false);
+        assert_eq!(source.raise_pair([7, 0], [0, 0, 0], true)[0], 7);
+    }
 
     #[test]
     fn publish_then_apply() {

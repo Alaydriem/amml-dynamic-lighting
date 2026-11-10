@@ -4,7 +4,9 @@ use std::sync::atomic::AtomicPtr;
 use amml_game::{EntryId, EntryNeed, GameEntries};
 use amml_sdk::{AmmlMod, Api, Logger, ModDirs, SdkError};
 
-use crate::detours::{client_update, get_light_color, light_grid_fill, propagate_for_mesh, render_level};
+use crate::detours::{
+    client_update, get_brightness, get_light_color, light_grid_fill, propagate_for_mesh, render_level,
+};
 use crate::runtime::DynamicLightingRuntime;
 use crate::vv_emitter::VvEmitter;
 
@@ -21,7 +23,10 @@ impl DynamicLightingMod {
     const TLS_INDEX: &'static str = "core.tls_index";
     const TLS_EMITTERS: &'static str = "LightPropagation.tlsEmitterVector";
 
-    const ENTRIES: [&'static str; 21] = [
+    /// The light lookup of the entity and block-entity renderers (optional). Without it only the terrain is lit.
+    const LIGHT_LOOKUP: &'static str = "BlockSource.getLightColor";
+
+    const ENTRIES: [&'static str; 22] = [
         "ClientInstance.update",
         "ClientInstance.getLocalPlayer",
         "ClientInstance.getRegion",
@@ -39,6 +44,7 @@ impl DynamicLightingMod {
         "RenderChunkCoordinator._setDirty",
         "RenderChunkCoordinator.vtable",
         "LevelRenderer.mRenderChunkCoordinators",
+        Self::LIGHT_LOOKUP,
         "LightPropagationCoordinator.propagateForMesh",
         Self::GRID_FILL,
         Self::TLS_INDEX,
@@ -68,6 +74,7 @@ impl DynamicLightingMod {
         let need = |id: &str| match id {
             "Item.mFullName" => EntryNeed::Optional { feature: "item names" },
             Self::GRID_FILL | Self::TLS_INDEX | Self::TLS_EMITTERS => EntryNeed::Optional { feature: "vibrant colour" },
+            Self::LIGHT_LOOKUP => EntryNeed::Optional { feature: "entity light" },
             _ => EntryNeed::Required,
         };
         let wanted: Vec<(EntryId, EntryNeed)> = Self::ENTRIES.iter().map(|id| (EntryId::new(id), need(id))).collect();
@@ -88,6 +95,10 @@ impl DynamicLightingMod {
             }
             _ => None,
         };
+        let entity_light = entries.get(EntryId::new(Self::LIGHT_LOOKUP));
+        if let Some(lookup) = entity_light {
+            targets.push((lookup, get_brightness::detour as *const c_void, get_brightness::GUARD.original()));
+        }
         runtime.set_entries(entries);
         for (target, detour, original) in targets {
             // SAFETY: each target is the derived start of the game function its detour was written for (see
@@ -110,6 +121,11 @@ impl DynamicLightingMod {
             None => {
                 runtime.logger().info("vibrant visuals: emitter entries missing; static light skipped near the light")
             }
+        }
+        if entity_light.is_some() {
+            runtime.logger().info("entity light: on");
+        } else {
+            runtime.logger().info("entity light: entry missing; entities and block entities not lit");
         }
         Ok(())
     }

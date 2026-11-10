@@ -4,11 +4,13 @@
 //! How: a detour on the tessellator cache light getter raises the block-light nibble by distance to the player,
 //! and the subchunks in reach are re-meshed through `RenderChunkCoordinator::_setDirty` when the light moves a
 //! quarter block or changes level. In Vibrant Visuals the static light pass that would overwrite that vertex light
-//! is skipped for the subchunks in reach.
+//! is skipped for the subchunks in reach. Entities and block entities read their light each frame through
+//! `BlockSource::getLightColor`; a second detour raises that result in the same way, on the draw thread only.
 
 #![deny(unsafe_code)]
 
 pub mod detours;
+pub mod draw_thread;
 pub mod dynamic_lighting_mod;
 pub mod held_light_table;
 pub mod light_falloff;

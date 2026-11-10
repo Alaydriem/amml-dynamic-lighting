@@ -2,13 +2,16 @@
 
 use amml_sdk::amml_detour;
 
+use crate::draw_thread::DrawThread;
 use crate::light_source::{LightSource, VvPlan};
 use crate::runtime::DynamicLightingRuntime;
 use crate::vv_emitter::VvEmitter;
 
 // bool ClientInstance::update(bool, bool): once per frame on the game thread. The third argument (26.60+) is carried
-// as a raw u64 so the register reaches the original bit for bit
+// as a raw u64 so the register reaches the original bit for bit. Its thread also draws the world (thread check,
+// docs/findings/entity-light/findings.md), so it is marked as the draw thread for the entity light
 amml_detour!(pub mod client_update(this: usize, init_finished: u8, extra: u64) -> u8 |original| {
+    DrawThread::mark();
     let result = original(this, init_finished, extra);
     if let Some(runtime) = DynamicLightingRuntime::get() {
         runtime.tick(this);
@@ -40,6 +43,31 @@ amml_detour!(pub mod get_light_color(cache: usize, out: usize, pos: usize, block
             let raised = LightSource::get().apply(*pos, current);
             if raised != current {
                 *out.add(1) = raised;
+            }
+        }
+    }
+    result
+});
+
+// BrightnessPair* BlockSource::getLightColor(BrightnessPair* out, BlockPos const& pos, Brightness minBlockLight) (name
+// not confirmed): rcx = the BlockSource, rdx = the 2-byte result (sky first, block second), r8 = pos, r9b = the minimum
+// block light; returns rdx in rax. The entity and block-entity renderers read their light through it each frame, on the
+// draw thread; the terrain mesh workers call it millions of times a second through the terrain cache fill, and the
+// server thread for spawn checks. After the original, on the draw thread only, the block byte (out[1]) is raised to the
+// held light's value; elsewhere the result stays as it is, after one thread-local read. The minimum is carried as a raw
+// u64 so the register reaches the original bit for bit. No logging, no locks and no allocation here
+amml_detour!(pub mod get_brightness(source: usize, out: usize, pos: usize, min: u64) -> usize |original| {
+    let result = original(source, out, pos, min);
+    if out != 0 && pos != 0 && DrawThread::is_current() {
+        let out = out as *mut [u8; 2];
+        let pos = pos as *const [i32; 3];
+        // SAFETY: the game passes a live BlockPos and a 2-byte result buffer, both valid for the call
+        #[allow(unsafe_code)]
+        unsafe {
+            let current = *out;
+            let raised = LightSource::get().raise_pair(current, *pos, true);
+            if raised[1] != current[1] {
+                (*out)[1] = raised[1];
             }
         }
     }

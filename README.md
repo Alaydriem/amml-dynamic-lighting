@@ -2,7 +2,7 @@
 
 <img src="./assets/readme.png" alt="Dynamic Lighting" width="256">
 
-# Dynamic Lighting
+# Alaydriem's Dynamic Lighting
 
 [![Release](https://img.shields.io/github/v/release/alaydriem/amml-dynamic-lighting?include_prereleases)](https://github.com/alaydriem/amml-dynamic-lighting/releases)
 [![Build](https://img.shields.io/github/actions/workflow/status/alaydriem/amml-dynamic-lighting/build.yml?branch=master&label=build)](https://github.com/alaydriem/amml-dynamic-lighting/actions/workflows/build.yml)
@@ -16,7 +16,7 @@ Hold a torch or a lantern and the world around you lights up. The light moves wi
 
 Client-side and visual only. The mod changes how the terrain is drawn, not the light levels of the world, so mobs still spawn where they would without it.
 
-## Usage
+## Features
 
 - Hold a light-giving item in your main hand or your offhand. The terrain around you is drawn lit at that item's light level. If both hands hold a light, the brighter one counts.
 - The level is the one the item's block gives when you place it: a torch gives 14, a lantern 15, a soul torch 10, a redstone torch 7. New light blocks, and light blocks from add-ons, work too.

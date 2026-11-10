@@ -27,22 +27,22 @@ cargo build --release -p dynamic-lighting-amml
 rm -rf dist/@amml/dynamic-lighting
 mkdir -p dist/@amml/dynamic-lighting
 cp target/release/amml_dynamic_lighting.dll dist/@amml/dynamic-lighting/
-cp target/release/amml_dynamic_lighting.pdb dist/@amml/dynamic-lighting/ 2>/dev/null || true
-cp amml/amml.hcl amml/icon.png dist/@amml/dynamic-lighting/
+cp src/amml/amml.hcl src/amml/icon.png dist/@amml/dynamic-lighting/
+if find dist -name '*.pdb' | grep -q .; then echo "a .pdb is in dist/; debug symbols are never shipped"; exit 1; fi
 echo "built dist/@amml/dynamic-lighting"
 '''
 
 [tasks.install]
-description = "Runs package, then copies the mod into mods/amml/@amml/dynamic-lighting and the central ../amml/recipes into amml/recipes of an isolated test instance (--instance, default 1.26.63.01-dynamic-lighting). Close the game first"
+description = "Runs package, then copies the mod into mods/amml/@amml/dynamic-lighting and the central ../amml/recipes into amml/recipes of an isolated test instance (--instance, required). Close the game first"
 depends = ["package"]
 dir = "{{config_root}}"
 shell = "bash -c"
 usage = '''
-flag "--instance <name>" default="1.26.63.01-dynamic-lighting" help="The instance folder under %LOCALAPPDATA%/amml/instances"
+flag "--instance <name>" required=#true help="The instance folder under %LOCALAPPDATA%/amml/instances"
 '''
 run = '''
 set -e
-instance="$LOCALAPPDATA/amml/instances/${usage_instance:-1.26.63.01-dynamic-lighting}"
+instance="$LOCALAPPDATA/amml/instances/${usage_instance:?--instance is required}"
 [ -f "$instance/Minecraft.Windows.exe" ] || { echo "no instance at $instance"; exit 1; }
 target="$instance/mods/amml/@amml/dynamic-lighting"
 mkdir -p "$target"

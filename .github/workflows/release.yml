@@ -35,4 +35,4 @@ jobs:
       namespace: amml
       name: dynamic-lighting
       package_task: package
-      descriptor: amml/descriptor.hcl
+      descriptor: src/amml/descriptor.hcl

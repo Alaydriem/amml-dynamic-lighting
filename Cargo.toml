@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["amml"]
+members = ["src/amml"]
 
 [workspace.package]
 version = "26.62.0"

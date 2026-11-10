@@ -13,7 +13,7 @@ use crate::vv_emitter::VvEmitter;
 pub struct DynamicLightingMod;
 
 impl DynamicLightingMod {
-    pub const MODULE: &'static str = "@amml/dynamic-lighting";
+    pub const MODULE: &'static str = "@alaydriem/dynamic-lighting";
 
     /// The Vibrant Visuals hand emitter (optional): the light grid fill (hooked), the game's `_tls_index` and the
     /// emitter vector offset in the game's TLS block. Without them the mod skips the static light pass near the light.
@@ -124,7 +124,7 @@ impl DynamicLightingMod {
 }
 
 impl AmmlMod for DynamicLightingMod {
-    const NAMESPACE: &'static str = "amml";
+    const NAMESPACE: &'static str = "alaydriem";
     const NAME: &'static str = "dynamic-lighting";
 
     fn load(api: &Api) -> Result<(), SdkError> {

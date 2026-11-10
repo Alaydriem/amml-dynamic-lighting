@@ -1,4 +1,4 @@
-namespace    = "amml"
+namespace    = "alaydriem"
 name         = "dynamic-lighting"
 display_name = "Dynamic Lighting"
 version      = "26.62.0"

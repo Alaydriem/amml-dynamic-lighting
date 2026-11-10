@@ -18,22 +18,22 @@ dir = "{{config_root}}"
 run = "cargo nextest run --workspace"
 
 [tasks.package]
-description = "Builds dist/@amml/dynamic-lighting/ (the DLL, amml.hcl, icon)"
+description = "Builds dist/@alaydriem/dynamic-lighting/ (the DLL, amml.hcl, icon)"
 dir = "{{config_root}}"
 shell = "bash -c"
 run = '''
 set -e
 cargo build --release -p dynamic-lighting-amml
-rm -rf dist/@amml/dynamic-lighting
-mkdir -p dist/@amml/dynamic-lighting
-cp target/release/amml_dynamic_lighting.dll dist/@amml/dynamic-lighting/
-cp src/amml/amml.hcl src/amml/icon.png dist/@amml/dynamic-lighting/
+rm -rf dist/@alaydriem/dynamic-lighting
+mkdir -p dist/@alaydriem/dynamic-lighting
+cp target/release/alaydriem_dynamic_lighting.dll dist/@alaydriem/dynamic-lighting/
+cp src/amml/amml.hcl src/amml/icon.png dist/@alaydriem/dynamic-lighting/
 if find dist -name '*.pdb' | grep -q .; then echo "a .pdb is in dist/; debug symbols are never shipped"; exit 1; fi
-echo "built dist/@amml/dynamic-lighting"
+echo "built dist/@alaydriem/dynamic-lighting"
 '''
 
 [tasks.install]
-description = "Runs package, then copies the mod into mods/amml/@amml/dynamic-lighting and the central ../amml/recipes into amml/recipes of an isolated test instance (--instance, required). Close the game first"
+description = "Runs package, then copies the mod into mods/amml/@alaydriem/dynamic-lighting and the central ../amml/recipes into amml/recipes of an isolated test instance (--instance, required). Close the game first"
 depends = ["package"]
 dir = "{{config_root}}"
 shell = "bash -c"
@@ -44,9 +44,9 @@ run = '''
 set -e
 instance="$LOCALAPPDATA/amml/instances/${usage_instance:?--instance is required}"
 [ -f "$instance/Minecraft.Windows.exe" ] || { echo "no instance at $instance"; exit 1; }
-target="$instance/mods/amml/@amml/dynamic-lighting"
+target="$instance/mods/amml/@alaydriem/dynamic-lighting"
 mkdir -p "$target"
-cp -r dist/@amml/dynamic-lighting/. "$target/"
+cp -r dist/@alaydriem/dynamic-lighting/. "$target/"
 rm -rf "$instance/amml/recipes"
 cp -r ../amml/recipes "$instance/amml/recipes"
 echo "installed -> $target (and ../amml/recipes -> $instance/amml/recipes)"

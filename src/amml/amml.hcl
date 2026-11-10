@@ -1,6 +1,6 @@
-namespace    = "amml"
+namespace    = "alaydriem"
 name         = "dynamic-lighting"
-entry        = "amml_dynamic_lighting.dll"
+entry        = "alaydriem_dynamic_lighting.dll"
 api_version  = 2
 amml_version = "26.62.0"
 entries = [

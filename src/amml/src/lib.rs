@@ -1,4 +1,4 @@
-//! @amml/dynamic-lighting: when the local player holds a light-emitting item, the terrain
+//! @alaydriem/dynamic-lighting: when the local player holds a light-emitting item, the terrain
 //! meshes near the player are built with extra block light. Visual only: the world's light values do not change.
 //!
 //! How: a detour on the tessellator cache light getter raises the block-light nibble by distance to the player,

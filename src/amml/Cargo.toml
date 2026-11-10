@@ -8,7 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [lib]
-name = "amml_dynamic_lighting"
+name = "alaydriem_dynamic_lighting"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]

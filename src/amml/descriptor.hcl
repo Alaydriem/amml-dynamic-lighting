@@ -1,7 +1,7 @@
 namespace    = "alaydriem"
 name         = "dynamic-lighting"
 display_name = "Dynamic Lighting"
-version      = "26.62.0"
+version      = "26.63.4"
 author       = "Alaydriem"
 config_path  = "config.hcl"
 

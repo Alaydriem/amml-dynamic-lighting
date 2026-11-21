@@ -1,39 +1,88 @@
 namespace    = "alaydriem"
 name         = "dynamic-lighting"
 entry        = "alaydriem_dynamic_lighting.dll"
-api_version  = 2
-amml_version = "26.63.2"
-entries = [
-  # required: the per-frame tick, the player, the held item
-  "ClientInstance.update",
-  "ClientInstance.getLocalPlayer",
-  "ClientInstance.getRegion",
-  "Actor.stateVectorComponent",
-  "Actor.actorRotationComponent",
-  "StateVectorComponent.mPos",
-  "ActorRotationComponent.mRot",
-  "Player.playerInventory",
-  "Item.mFullName",
-  "Actor.getItemInHandSlot",
-  "ItemStackBase.mBlock",
-  "Block.mDirectData.mLightEmission",
-  # required: the terrain light (recipe in ../amml/recipes/block_tessellator_cache_light.hcl)
-  "BlockTessellatorCache.getLightColor",
-  # required: the mesh rebuild near the player
-  "LevelRenderer.renderLevel",
-  # recipe in ../amml/recipes/render_chunk_coordinator_set_dirty.hcl
-  "RenderChunkCoordinator._setDirty",
-  "RenderChunkCoordinator.vtable",
-  "LevelRenderer.mRenderChunkCoordinators",
-  # optional: entity and block-entity light (recipe in ../amml/recipes/block_source.hcl)
-  "BlockSource.getLightColor",
-  # Vibrant Visuals at Block Light Quality "off": skip the static light rewrite near the light
-  "LightPropagationCoordinator.propagateForMesh",
-  # optional: Vibrant Visuals hand emitter (the held block is lit with its own game colour)
-  "LightPropagation.fillSubChunkGrid",
-  "core.tls_index",
-  "LightPropagation.tlsEmitterVector",
-]
+api_version  = 3
+
+uses {
+  feature "light" {
+    event "client.tick" {
+      version  = 1
+      required = true
+    }
+    event "world.left" {
+      version  = 1
+      required = true
+    }
+    event "registry.provider_ready" {
+      version  = 1
+      required = true
+    }
+    event "registry.provider_gone" {
+      version  = 1
+      required = true
+    }
+    area "client.read" {
+      version  = 1
+      required = true
+    }
+    area "actor.read" {
+      version  = 2
+      required = true
+    }
+    area "inventory.read" {
+      version  = 2
+      required = true
+    }
+    area "lighting.terrain" {
+      version  = 1
+      required = true
+    }
+    event "mods.loaded" {
+      version  = 1
+      required = false
+    }
+    event "input.lease_suspended" {
+      version  = 1
+      required = false
+    }
+    event "input.lease_resumed" {
+      version  = 1
+      required = false
+    }
+    event "input.lease_lost" {
+      version  = 1
+      required = false
+    }
+    event "input.injected_released" {
+      version  = 2
+      required = false
+    }
+    event "overlay.screenshot_taken" {
+      version  = 1
+      required = false
+    }
+    event "overlay.screenshot_written" {
+      version  = 1
+      required = false
+    }
+    area "input.lease" {
+      version  = 1
+      required = false
+    }
+  }
+  feature "entity light" {
+    area "lighting.entity" {
+      version  = 1
+      required = true
+    }
+  }
+  feature "vibrant colour" {
+    area "lighting.vibrant" {
+      version  = 1
+      required = true
+    }
+  }
+}
 
 listing {
   title       = "Dynamic Lighting"

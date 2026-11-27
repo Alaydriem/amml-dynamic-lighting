@@ -1,7 +1,11 @@
 [tasks.preflight]
 description = "Names a missing toolchain or tool before a build turns it into an obscure error"
 dir = "{{config_root}}"
-run = ["rustc --version", "cargo --version", "cargo nextest --version"]
+run = [
+  "rustc --version",
+  "cargo --version",
+  "cargo nextest --version",
+]
 
 [tasks.check]
 description = "Compiles, runs clippy with warnings denied and checks formatting"
@@ -17,8 +21,25 @@ description = "Every test through cargo nextest run"
 dir = "{{config_root}}"
 run = "cargo nextest run --workspace"
 
+[tasks.manifest]
+description = "Rewrites the uses block of src/amml/amml.hcl from the USES of the mod"
+dir = "{{config_root}}"
+run = "cargo run -q -p dynamic-lighting-amml --example write_manifest"
+
+[tasks.compat]
+description = "Runs the AMML compat check of the packaged mod in dist/ against a game exe (--exe, required): which events and areas of the mod this build serves. Run package first"
+dir = "{{config_root}}"
+shell = "bash -c"
+usage = '''
+flag "--exe <exe>" required=#true help="The Minecraft.Windows.exe of a test instance"
+'''
+run = '''
+set -e
+mise --cd ../amml run compat -- --exe "${usage_exe:?--exe is required}" --mods "$PWD/dist"
+'''
+
 [tasks.package]
-description = "Builds dist/@alaydriem/dynamic-lighting/ (the DLL, amml.hcl, icon)"
+description = "Builds dist/@alaydriem/dynamic-lighting/ (alaydriem_dynamic_lighting.dll, amml.hcl), the release artifact"
 dir = "{{config_root}}"
 shell = "bash -c"
 run = '''
@@ -26,15 +47,15 @@ set -e
 cargo build --release -p dynamic-lighting-amml
 rm -rf dist/@alaydriem/dynamic-lighting
 mkdir -p dist/@alaydriem/dynamic-lighting
-cp target/release/alaydriem_dynamic_lighting.dll dist/@alaydriem/dynamic-lighting/
-cp src/amml/amml.hcl src/amml/icon.png dist/@alaydriem/dynamic-lighting/
+cp target/release/alaydriem_dynamic_lighting.dll dist/@alaydriem/dynamic-lighting/alaydriem_dynamic_lighting.dll
+cp src/amml/amml.hcl dist/@alaydriem/dynamic-lighting/amml.hcl
+cp src/amml/icon.png dist/@alaydriem/dynamic-lighting/icon.png
 if find dist -name '*.pdb' | grep -q .; then echo "a .pdb is in dist/; debug symbols are never shipped"; exit 1; fi
 echo "built dist/@alaydriem/dynamic-lighting"
 '''
 
 [tasks.install]
-description = "Runs package, then copies the mod into mods/amml/@alaydriem/dynamic-lighting and the central ../amml/recipes into amml/recipes of an isolated test instance (--instance, required). Close the game first"
-depends = ["package"]
+description = "Runs package, then copies dist/@alaydriem/dynamic-lighting into mods/amml/@alaydriem/dynamic-lighting of an AMML instance under %LOCALAPPDATA%/amml/instances (--instance, required). The mod's config/ stays. Close the game first: a running game locks the DLL"
 dir = "{{config_root}}"
 shell = "bash -c"
 usage = '''
@@ -42,12 +63,20 @@ flag "--instance <name>" required=#true help="The instance folder under %LOCALAP
 '''
 run = '''
 set -e
-instance="$LOCALAPPDATA/amml/instances/${usage_instance:?--instance is required}"
+[ -n "$LOCALAPPDATA" ] || { echo "LOCALAPPDATA is not set; the instances live under %LOCALAPPDATA%/amml/instances"; exit 1; }
+name="${usage_instance:-}"
+[ -n "$name" ] || { echo "--instance <name> is required"; exit 1; }
+lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+instances="$(cd "$LOCALAPPDATA/amml/instances" 2> /dev/null && pwd -P)" || { echo "no folder $LOCALAPPDATA/amml/instances"; exit 1; }
+instance="$(cd "$instances/$name" 2> /dev/null && pwd -P)" || { echo "no instance folder $instances/$name"; exit 1; }
+[ "$(lower "$(dirname "$instance")")" = "$(lower "$instances")" ] || { echo "refusing $name: it resolves to $instance, which is not a folder of $instances"; exit 1; }
+case "$(lower "$(basename "$instance")")" in
+  1.26.63.01|1.26.63.01-p) echo "refusing $name: it resolves to $instance, a play instance; install into a test instance"; exit 1 ;;
+esac
 [ -f "$instance/Minecraft.Windows.exe" ] || { echo "no instance at $instance"; exit 1; }
+mise run package
 target="$instance/mods/amml/@alaydriem/dynamic-lighting"
 mkdir -p "$target"
 cp -r dist/@alaydriem/dynamic-lighting/. "$target/"
-rm -rf "$instance/amml/recipes"
-cp -r ../amml/recipes "$instance/amml/recipes"
-echo "installed -> $target (and ../amml/recipes -> $instance/amml/recipes)"
+echo "installed dist/@alaydriem/dynamic-lighting -> $target"
 '''

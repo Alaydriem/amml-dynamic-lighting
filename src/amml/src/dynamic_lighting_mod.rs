@@ -1,165 +1,77 @@
-use std::ffi::c_void;
-use std::sync::atomic::AtomicPtr;
+use std::sync::{Arc, Mutex, PoisonError};
 
-use amml_game::{EntryId, EntryNeed, GameEntries};
-use amml_sdk::{AmmlMod, Api, Logger, ModDirs, SdkError};
-
-use crate::detours::{
-    client_update, get_brightness, get_light_color, light_grid_fill, propagate_for_mesh, render_level,
+use amm_client::link::ManagerLink;
+use amml_api::amml_abi::{
+    ClientTick, InjectedInputReleased, InputLeaseLost, InputLeaseResumed, InputLeaseSuspended, ModsLoaded,
+    ProviderGone, ProviderReady, ScreenshotTaken, ScreenshotWritten, WorldLeft,
 };
-use crate::runtime::DynamicLightingRuntime;
-use crate::vv_emitter::VvEmitter;
+use amml_api::{AmmlMod, ApiError, Area, Ctx, DisableCtx, Uses};
 
-/// The AMML entry point: load makes the runtime, enable resolves the entries and installs the hooks, disable
-/// removes them.
+use crate::services::{LightDescriptor, LightListeners, LightRuntime};
+
+// What the enabled mod owns. `disable` takes it, which drops the listeners and closes the link.
+static RUNNING: Mutex<Option<LightListeners>> = Mutex::new(None);
+
+/// The AMML entry point: enable starts the manager link and the listeners, disable removes them. The loader clears
+/// the mod's light at disable.
 pub struct DynamicLightingMod;
-
-impl DynamicLightingMod {
-    pub const MODULE: &'static str = "@alaydriem/dynamic-lighting";
-
-    /// The Vibrant Visuals hand emitter (optional): the light grid fill (hooked), the game's `_tls_index` and the
-    /// emitter vector offset in the game's TLS block. Without them the mod skips the static light pass near the light.
-    const GRID_FILL: &'static str = "LightPropagation.fillSubChunkGrid";
-    const TLS_INDEX: &'static str = "core.tls_index";
-    const TLS_EMITTERS: &'static str = "LightPropagation.tlsEmitterVector";
-
-    /// The light lookup of the entity and block-entity renderers (optional). Without it only the terrain is lit.
-    const LIGHT_LOOKUP: &'static str = "BlockSource.getLightColor";
-
-    const ENTRIES: [&'static str; 22] = [
-        "ClientInstance.update",
-        "ClientInstance.getLocalPlayer",
-        "ClientInstance.getRegion",
-        "Actor.stateVectorComponent",
-        "Actor.actorRotationComponent",
-        "StateVectorComponent.mPos",
-        "ActorRotationComponent.mRot",
-        "Player.playerInventory",
-        "Item.mFullName",
-        "Actor.getItemInHandSlot",
-        "ItemStackBase.mBlock",
-        "Block.mDirectData.mLightEmission",
-        "BlockTessellatorCache.getLightColor",
-        "LevelRenderer.renderLevel",
-        "RenderChunkCoordinator._setDirty",
-        "RenderChunkCoordinator.vtable",
-        "LevelRenderer.mRenderChunkCoordinators",
-        Self::LIGHT_LOOKUP,
-        "LightPropagationCoordinator.propagateForMesh",
-        Self::GRID_FILL,
-        Self::TLS_INDEX,
-        Self::TLS_EMITTERS,
-    ];
-
-    fn hooks() -> [(&'static str, *const c_void, &'static AtomicPtr<c_void>); 4] {
-        [
-            (
-                "BlockTessellatorCache.getLightColor",
-                get_light_color::detour as *const c_void,
-                get_light_color::GUARD.original(),
-            ),
-            ("LevelRenderer.renderLevel", render_level::detour as *const c_void, render_level::GUARD.original()),
-            ("ClientInstance.update", client_update::detour as *const c_void, client_update::GUARD.original()),
-            (
-                "LightPropagationCoordinator.propagateForMesh",
-                propagate_for_mesh::detour as *const c_void,
-                propagate_for_mesh::GUARD.original(),
-            ),
-        ]
-    }
-
-    fn install(api: &Api, runtime: &DynamicLightingRuntime) -> Result<(), SdkError> {
-        // Item.mFullName is refused on builds with the new HashedString layout (Preview 1.26.70); without it no item
-        // name is read, so only the two coded exceptions (no block) lose their light
-        let need = |id: &str| match id {
-            "Item.mFullName" => EntryNeed::Optional { feature: "item names" },
-            Self::GRID_FILL | Self::TLS_INDEX | Self::TLS_EMITTERS => EntryNeed::Optional { feature: "vibrant colour" },
-            Self::LIGHT_LOOKUP => EntryNeed::Optional { feature: "entity light" },
-            _ => EntryNeed::Required,
-        };
-        let wanted: Vec<(EntryId, EntryNeed)> = Self::ENTRIES.iter().map(|id| (EntryId::new(id), need(id))).collect();
-        let entries = GameEntries::resolve(api, &wanted).map_err(|error| SdkError::Mod(error.to_string()))?;
-        let mut targets = Vec::new();
-        for (entry, detour, original) in Self::hooks() {
-            let target = entries.get(EntryId::new(entry)).ok_or_else(|| SdkError::MissingEntry(entry.to_string()))?;
-            targets.push((target, detour, original));
-        }
-        let emitter = match (
-            entries.get(EntryId::new(Self::GRID_FILL)),
-            entries.get(EntryId::new(Self::TLS_INDEX)),
-            entries.get(EntryId::new(Self::TLS_EMITTERS)),
-        ) {
-            (Some(grid_fill), Some(tls_index), Some(emitters)) => {
-                targets.push((grid_fill, light_grid_fill::detour as *const c_void, light_grid_fill::GUARD.original()));
-                usize::try_from(tls_index).ok().zip(usize::try_from(emitters).ok())
-            }
-            _ => None,
-        };
-        let entity_light = entries.get(EntryId::new(Self::LIGHT_LOOKUP));
-        if let Some(lookup) = entity_light {
-            targets.push((lookup, get_brightness::detour as *const c_void, get_brightness::GUARD.original()));
-        }
-        runtime.set_entries(entries);
-        for (target, detour, original) in targets {
-            // SAFETY: each target is the derived start of the game function its detour was written for (see
-            // detours.rs for the signatures); each original slot belongs to one hook
-            #[allow(unsafe_code)]
-            let hooked = unsafe { api.hook(target, detour, 0, original) };
-            match hooked {
-                Ok(hook) => runtime.keep_hook(hook),
-                Err(error) => {
-                    Self::remove(api, runtime);
-                    return Err(error);
-                }
-            }
-        }
-        match emitter {
-            Some((tls_index, emitters)) => {
-                VvEmitter::enable(tls_index, emitters);
-                runtime.logger().info("vibrant visuals: the held block is added as a light (game colour)");
-            }
-            None => {
-                runtime.logger().info("vibrant visuals: emitter entries missing; static light skipped near the light")
-            }
-        }
-        if entity_light.is_some() {
-            runtime.logger().info("entity light: on");
-        } else {
-            runtime.logger().info("entity light: entry missing; entities and block entities not lit");
-        }
-        Ok(())
-    }
-
-    fn remove(api: &Api, runtime: &DynamicLightingRuntime) {
-        for hook in runtime.take_hooks() {
-            if let Err(error) = api.unhook(hook) {
-                runtime.logger().warn(&format!("unhook failed: {error}"));
-            }
-        }
-    }
-}
 
 impl AmmlMod for DynamicLightingMod {
     const NAMESPACE: &'static str = "alaydriem";
     const NAME: &'static str = "dynamic-lighting";
+    const USES: Uses = amml_api::amml_uses! {
+        feature "light" {
+            required ClientTick;
+            required WorldLeft;
+            required ProviderReady;
+            required ProviderGone;
+            required area Area::CLIENT_READ;
+            required area Area::ACTOR_READ.at(2);
+            required area Area::INVENTORY_READ.at(2);
+            required area Area::LIGHTING_TERRAIN;
+            // The manager link listens to these when the loader serves them
+            optional ModsLoaded;
+            optional InputLeaseSuspended;
+            optional InputLeaseResumed;
+            optional InputLeaseLost;
+            optional InjectedInputReleased;
+            optional ScreenshotTaken;
+            optional ScreenshotWritten;
+            optional area Area::INPUT_LEASE;
+        }
+        feature "entity light" {
+            required area Area::LIGHTING_ENTITY;
+        }
+        feature "vibrant colour" {
+            required area Area::LIGHTING_VIBRANT;
+        }
+    };
 
-    fn load(api: &Api) -> Result<(), SdkError> {
-        let dirs = ModDirs::new(api, Self::MODULE)?;
-        DynamicLightingRuntime::install(Logger::new(api, Self::MODULE), dirs.config_dir);
+    fn enable(ctx: &Ctx) -> Result<(), ApiError> {
+        let log = ctx.log();
+        let link = match ManagerLink::start_without_frame(ctx, LightDescriptor::TEXT) {
+            Ok(link) => Some(link),
+            Err(error) => {
+                log.warn("mod manager not reached; defaults in use, no toggle key", &[("error", &error.to_string())]);
+                None
+            }
+        };
+        let runtime = Arc::new(LightRuntime::new(log, ctx.lighting()));
+        runtime.attach(link);
+        let listeners = LightListeners::start(ctx, runtime)?;
+        *RUNNING.lock().unwrap_or_else(PoisonError::into_inner) = Some(listeners);
+        let entity = if ctx.supports(Area::LIGHTING_ENTITY) { "entity light: on" } else { "entity light: off" };
+        let vibrant = if ctx.supports(Area::LIGHTING_VIBRANT) { "vibrant colour: on" } else { "vibrant colour: off" };
+        log.info(entity, &[]);
+        log.info(vibrant, &[]);
+        log.info("enabled", &[]);
         Ok(())
     }
 
-    fn enable(api: &Api) -> Result<(), SdkError> {
-        let runtime = DynamicLightingRuntime::get().ok_or_else(|| SdkError::Mod("load did not run".to_string()))?;
-        Self::install(api, runtime)?;
-        runtime.enable_link();
-        runtime.logger().info("enabled");
-        Ok(())
-    }
-
-    fn disable(api: &Api) {
-        let Some(runtime) = DynamicLightingRuntime::get() else { return };
-        Self::remove(api, runtime);
-        runtime.detach();
+    fn disable(_ctx: &Ctx, _how: &DisableCtx) {
+        let running = RUNNING.lock().unwrap_or_else(PoisonError::into_inner).take();
+        if let Some(listeners) = running {
+            listeners.stop();
+        }
     }
 }
